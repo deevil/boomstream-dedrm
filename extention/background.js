@@ -53,9 +53,6 @@ chrome.action.onClicked.addListener(async (tab) => {
       return
     }
 
-    console.log('inside!')
-    console.log(uriLocal, masterPlayListLocalUrl)
-
     const masterPlayListMetaData = m3u8Parser(masterPlayListLocalData, masterPlayListLocalUrl);
     const maxLevel = masterPlayListMetaData.levels.sort((a, b) => b.bandwidth - a.bandwidth)[0];
     const responsePlaylist = await fetch(maxLevel.url);
@@ -66,10 +63,9 @@ chrome.action.onClicked.addListener(async (tab) => {
     const IV = computeIV(extMediaReady, xorKey)
     const processedPlayListData = playListWithMaxResolutionData.replace('[KEY]', uri).replace('[IV]', `0x${ IV }`);
 
-    console.log(processedPlayListData)
-    const url = 'data:application/vnd.apple.mpegurl;base64,' + btoa(processedPlayListData);
-    const filename = 'playlist.m3u8';
-    // chrome.downloads.download({url, filename})
+    const url = `data:application/vnd.apple.mpegurl;base64,${btoa(processedPlayListData)}`;
+    const filename = `${tab.title}.m3u8`;
+    chrome.downloads.download({url, filename})
 
     processedMasterPlaylists.add(masterPlayList);
     await sem.release();
@@ -83,7 +79,6 @@ chrome.action.onClicked.addListener(async (tab) => {
       }
 
       const ext = resp.url.split('?')[0].split('#')[0].split('.').pop();
-     // console.log(resp.url, ext, ext === 'm3u8');
       if (ext === 'm3u8' && !obtainedPlaylists.has(resp.url)) {
         const data = await fetch(resp.url);
         const playlistData = await data.text();
