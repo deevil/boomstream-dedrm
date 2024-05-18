@@ -1,5 +1,6 @@
 import computeIV from './decryptor.js';
 import semaphore from './semaphore.js';
+import m3u8Parser from './vendor/m3u8Parser.js';
 
 const xorKey = 'bla_bla_bla';
 const sem = semaphore(1);
@@ -38,27 +39,28 @@ chrome.action.onClicked.addListener(async (tab) => {
   let playlists = new Map();
   let processedPlaylists = new Set();
 
-  const triggerPlaylistObtainProcess = ()=>{
-    if(!uri){
+  const triggerPlaylistObtainProcess = () => {
+    if (!uri) {
       sem.leave();
       return
     }
 
-    const unprocessedPlaylists = Array.from(playlists.keys()).filter(pl=> !processedPlaylists.has(pl));
+    const unprocessedPlaylists = Array.from(playlists.keys()).filter(pl => !processedPlaylists.has(pl));
 
-    for(const unprocessedPlaylist of unprocessedPlaylists){
+    for (const unprocessedPlaylist of unprocessedPlaylists) {
       const playListData = playlists.get(unprocessedPlaylist);
       let extMediaReady = playListData.substring(playListData.indexOf('#EXT-X-MEDIA-READY'));
       extMediaReady = extMediaReady.substring(0, extMediaReady.indexOf('\n')).replace('#EXT-X-MEDIA-READY:', '').trim();
       const IV = computeIV(extMediaReady, xorKey)
       processedPlaylists.add(unprocessedPlaylist);
 
-      const processedPlayListData = playListData.replace('[KEY]', uri).replace('[IV]', `0x${IV}`);
-     // const url = `data:text/plain,${processedPlayListData}`;
+      const processedPlayListData = playListData.replace('[KEY]', uri).replace('[IV]', `0x${ IV }`);
+      const url = 'data:application/vnd.apple.mpegurl;base64,' + btoa(processedPlayListData);
       const filename = 'playlist.m3u8';
-     // chrome.downloads.download({url, filename});
+      const parsed = m3u8Parser(processedPlayListData, unprocessedPlaylist);
+      console.log(parsed);
 
-      chrome.downloads.download({url: 'data:application/vnd.apple.mpegurl;base64,' + btoa(processedPlayListData), filename})
+      // chrome.downloads.download({url, filename})
     }
 
     sem.leave();
@@ -75,9 +77,8 @@ chrome.action.onClicked.addListener(async (tab) => {
         const data = await fetch(resp.url);
         const playlistData = await data.text();
         triedPlayLists.add(resp.url);
-        if(playlistData.includes('EXT-X-MEDIA-READY')){
+        if (playlistData.includes('EXT-X-MEDIA-READY')) {
           playlists.set(resp.url, playlistData);
-          console.log('found playlist');
           sem.take(triggerPlaylistObtainProcess.bind(this))
         }
       }
