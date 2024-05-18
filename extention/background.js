@@ -1,9 +1,9 @@
 import computeIV from './decryptor.js';
-import semaphore from './semaphore.js';
+import Semaphore from './semaphore.js';
 import m3u8Parser from './vendor/m3u8Parser.js';
 
 const xorKey = 'bla_bla_bla';
-const sem = semaphore(1);
+const sem = new Semaphore(1);
 
 
 chrome.action.onClicked.addListener(async (tab) => {
@@ -34,52 +34,66 @@ chrome.action.onClicked.addListener(async (tab) => {
     }
   }*/
 
+  //current uri and masterPlaylists (last seen via requests)
   let uri;
-  let triedPlayLists = new Set();
-  let playlists = new Map();
-  let processedPlaylists = new Set();
+  let masterPlayList = {
+    url: null,
+    data: null
+  };
 
-  const triggerPlaylistObtainProcess = () => {
-    if (!uri) {
-      sem.leave();
+  let obtainedPlaylists = new Set();
+  let processedMasterPlaylists = new Set();
+
+  const triggerPlaylistObtainProcess = async (uriLocal, masterPlayListLocalUrl, masterPlayListLocalData) => {
+
+    await sem.acquire();
+
+    if (!uriLocal || !masterPlayListLocalUrl || processedMasterPlaylists.has(masterPlayList)) {
+      await sem.release();
       return
     }
 
-    const unprocessedPlaylists = Array.from(playlists.keys()).filter(pl => !processedPlaylists.has(pl));
+    console.log('inside!')
+    console.log(uriLocal, masterPlayListLocalUrl)
 
-    for (const unprocessedPlaylist of unprocessedPlaylists) {
-      const playListData = playlists.get(unprocessedPlaylist);
-      let extMediaReady = playListData.substring(playListData.indexOf('#EXT-X-MEDIA-READY'));
-      extMediaReady = extMediaReady.substring(0, extMediaReady.indexOf('\n')).replace('#EXT-X-MEDIA-READY:', '').trim();
-      const IV = computeIV(extMediaReady, xorKey)
-      processedPlaylists.add(unprocessedPlaylist);
+    const masterPlayListMetaData = m3u8Parser(masterPlayListLocalData, masterPlayListLocalUrl);
+    const maxLevel = masterPlayListMetaData.levels.sort((a, b) => b.bandwidth - a.bandwidth)[0];
+    const responsePlaylist = await fetch(maxLevel.url);
+    const playListWithMaxResolutionData = await responsePlaylist.text();
 
-      const processedPlayListData = playListData.replace('[KEY]', uri).replace('[IV]', `0x${ IV }`);
-      const url = 'data:application/vnd.apple.mpegurl;base64,' + btoa(processedPlayListData);
-      const filename = 'playlist.m3u8';
-      const parsed = m3u8Parser(processedPlayListData, unprocessedPlaylist);
-      console.log(parsed);
+    let extMediaReady = playListWithMaxResolutionData.substring(playListWithMaxResolutionData.indexOf('#EXT-X-MEDIA-READY'));
+    extMediaReady = extMediaReady.substring(0, extMediaReady.indexOf('\n')).replace('#EXT-X-MEDIA-READY:', '').trim();
+    const IV = computeIV(extMediaReady, xorKey)
+    const processedPlayListData = playListWithMaxResolutionData.replace('[KEY]', uri).replace('[IV]', `0x${ IV }`);
 
-      // chrome.downloads.download({url, filename})
-    }
+    console.log(processedPlayListData)
+    const url = 'data:application/vnd.apple.mpegurl;base64,' + btoa(processedPlayListData);
+    const filename = 'playlist.m3u8';
+    // chrome.downloads.download({url, filename})
 
-    sem.leave();
+    processedMasterPlaylists.add(masterPlayList);
+    await sem.release();
   }
 
   chrome.webRequest.onBeforeRequest.addListener(
     async (resp) => {
       if (resp.url.includes('/process/')) {
         uri = resp.url;
-        sem.take(triggerPlaylistObtainProcess.bind(this));
+        await triggerPlaylistObtainProcess(uri, masterPlayList.url, masterPlayList.data);
       }
 
-      if (resp.url.includes('.m3u8') && !triedPlayLists.has(resp.url)) {
+      const ext = resp.url.split('?')[0].split('#')[0].split('.').pop();
+     // console.log(resp.url, ext, ext === 'm3u8');
+      if (ext === 'm3u8' && !obtainedPlaylists.has(resp.url)) {
         const data = await fetch(resp.url);
         const playlistData = await data.text();
-        triedPlayLists.add(resp.url);
-        if (playlistData.includes('EXT-X-MEDIA-READY')) {
-          playlists.set(resp.url, playlistData);
-          sem.take(triggerPlaylistObtainProcess.bind(this))
+        obtainedPlaylists.add(resp.url);
+        if (playlistData.includes('EXT-X-STREAM-INF')) {
+          masterPlayList = {
+            url: resp.url,
+            data: playlistData
+          };
+          await triggerPlaylistObtainProcess(uri, masterPlayList.url, masterPlayList.data);
         }
       }
 
