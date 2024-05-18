@@ -1,27 +1,9 @@
+import computeIV from './decryptor.js';
+import semaphore from './semaphore.js';
+
 const xorKey = 'bla_bla_bla';
-const decrypt = (source_text, key) => {
-  let result = '';
-  while (key.length < source_text.length) {
-    key += key;
-  }
+const sem = semaphore(1);
 
-  for (let n = 0; n < source_text.length; n += 2) {
-    let c = parseInt(source_text.slice(n, n + 2), 16) ^ key.charCodeAt(Math.floor(n / 2));
-    result += String.fromCharCode(c);
-  }
-
-  return result;
-}
-
-const computeIV = (extMediaReady, xorKey)=>{
-  const decrypted = decrypt(extMediaReady, xorKey)
-
-  let computedIV = '';
-  for (let i = 20; i < 36; i++) {
-    computedIV += ('0' + decrypted[i].charCodeAt(0).toString(16)).slice(-2);
-  }
-  return computedIV;
-}
 
 chrome.action.onClicked.addListener(async (tab) => {
   /*if (tab.url.startsWith(extensions) || tab.url.startsWith(webstore)) {
@@ -58,6 +40,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 
   const triggerPlaylistObtainProcess = ()=>{
     if(!uri){
+      sem.leave();
       return
     }
 
@@ -76,16 +59,16 @@ chrome.action.onClicked.addListener(async (tab) => {
      // chrome.downloads.download({url, filename});
 
       chrome.downloads.download({url: 'data:application/vnd.apple.mpegurl;base64,' + btoa(processedPlayListData), filename})
-
-
     }
+
+    sem.leave();
   }
 
   chrome.webRequest.onBeforeRequest.addListener(
     async (resp) => {
       if (resp.url.includes('/process/')) {
         uri = resp.url;
-        triggerPlaylistObtainProcess()
+        sem.take(triggerPlaylistObtainProcess.bind(this));
       }
 
       if (resp.url.includes('.m3u8') && !triedPlayLists.has(resp.url)) {
@@ -95,13 +78,10 @@ chrome.action.onClicked.addListener(async (tab) => {
         if(playlistData.includes('EXT-X-MEDIA-READY')){
           playlists.set(resp.url, playlistData);
           console.log('found playlist');
-          triggerPlaylistObtainProcess();
+          sem.take(triggerPlaylistObtainProcess.bind(this))
         }
       }
 
     }, {urls: [ '<all_urls>' ]}, [])
 });
-
-
-
 
