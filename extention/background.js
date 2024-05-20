@@ -6,6 +6,24 @@ import videoDecryptor from './videoDecryptor.js';
 const xorKey = 'bla_bla_bla';
 const sem = new Semaphore(1);
 
+const getBlobUrl = async (blob) => {
+  const url = chrome.runtime.getURL('offscreen.html');
+  try {
+    await chrome.offscreen.createDocument({
+      url,
+      reasons: ['BLOBS'],
+      justification: 'MV3 requirement',
+    });
+  } catch (err) {
+    if (!err.message.startsWith('Only a single offscreen')) throw err;
+  }
+  const client = (await clients.matchAll({includeUncontrolled: true}))
+    .find(c => c.url === url);
+  const mc = new MessageChannel();
+  client.postMessage(blob, [mc.port2]);
+  const res = await new Promise(cb => (mc.port1.onmessage = cb));
+  return res.data;
+}
 
 chrome.action.onClicked.addListener(async (tab) => {
   /*if (tab.url.startsWith(extensions) || tab.url.startsWith(webstore)) {
@@ -97,14 +115,11 @@ chrome.action.onClicked.addListener(async (tab) => {
 
     console.log('processed!')
 
-    const videoBlob = await new Blob(filesData);
+    const videoBlob = await new Blob(filesData, {type: 'application/octet-stream'});
     const videoFilename = `${ tab.title }.ts`;
 
-    await chrome.downloads.download({
-      url: URL.createObjectURL(videoBlob),
-      filename: videoFilename
-    });
-
+    const videoBlobUrl = await getBlobUrl(videoBlob);
+    chrome.downloads.download({url: videoBlobUrl, filename: videoFilename});
 
     processedMasterPlaylists.add(masterPlayList);
     await sem.release();

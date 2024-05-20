@@ -27,7 +27,8 @@
     "notifications",
     "webRequest",
     "downloads",
-    "tabs"
+    "tabs",
+    "offscreen"
   ],
   "host_permissions": [
     "http://*/*",
