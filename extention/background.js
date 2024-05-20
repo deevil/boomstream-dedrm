@@ -69,8 +69,11 @@ chrome.action.onClicked.addListener(async (tab) => {
     const IV = computeIV(extMediaReady, xorKey)
     const processedPlayListData = playListWithMaxResolutionData.replace('[KEY]', uri).replace('[IV]', `0x${ IV }`);
 
+    const safeTitleName = tab.title.trim().replaceAll(/[\/:\*\?"<>\|]/g, '');
+
     const playlistUrl = `data:application/vnd.apple.mpegurl;base64,${ btoa(processedPlayListData) }`;
-    const playlistFilename = `${ tab.title }.m3u8`;
+    const playlistFilename = `${ safeTitleName }.m3u8`;
+    console.log(playlistFilename);
     chrome.downloads.download({
       url: playlistUrl,
       filename: playlistFilename
@@ -103,7 +106,7 @@ chrome.action.onClicked.addListener(async (tab) => {
     console.log('processed!')
 
     const videoBlob = await new Blob(filesData, {type: 'application/octet-stream'});
-    const videoFilename = `${ tab.title }.ts`;
+    const videoFilename = `${ safeTitleName }.ts`;
 
     const videoBlobUrl = await getBlobUrl(videoBlob);
     chrome.downloads.download({url: videoBlobUrl, filename: videoFilename});
