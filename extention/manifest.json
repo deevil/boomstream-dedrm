@@ -28,7 +28,8 @@
     "webRequest",
     "downloads",
     "tabs",
-    "offscreen"
+    "offscreen",
+    "webNavigation"
   ],
   "host_permissions": [
     "http://*/*",
