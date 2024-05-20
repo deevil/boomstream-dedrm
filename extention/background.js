@@ -1,6 +1,7 @@
 import computeIV from './decryptor.js';
 import Semaphore from './semaphore.js';
 import m3u8Parser from './vendor/m3u8Parser.js';
+import videoDecryptor from './videoDecryptor.js';
 
 const xorKey = 'bla_bla_bla';
 const sem = new Semaphore(1);
@@ -63,9 +64,47 @@ chrome.action.onClicked.addListener(async (tab) => {
     const IV = computeIV(extMediaReady, xorKey)
     const processedPlayListData = playListWithMaxResolutionData.replace('[KEY]', uri).replace('[IV]', `0x${ IV }`);
 
-    const url = `data:application/vnd.apple.mpegurl;base64,${btoa(processedPlayListData)}`;
-    const filename = `${tab.title}.m3u8`;
-    chrome.downloads.download({url, filename})
+    const playlistUrl = `data:application/vnd.apple.mpegurl;base64,${ btoa(processedPlayListData) }`;
+    const playlistFilename = `${ tab.title }.m3u8`;
+    chrome.downloads.download({
+      url: playlistUrl,
+      filename: playlistFilename
+    });
+
+    const playlist = m3u8Parser(processedPlayListData, maxLevel.url);
+    const playlistKeyData = playlist.key[0];
+    const keyResponse = await fetch(playlistKeyData.uri);
+    const key = await keyResponse.text();
+    const filesData = [];
+
+    for (const segment of playlist.segments) {
+      console.log(`processing segment ${ segment.sn }`);
+      const r = await fetch(segment.url);
+      const buffer = await r.arrayBuffer();
+      const enc = new TextEncoder();
+      const cryptoKey = await crypto.subtle.importKey('raw', enc.encode(key).buffer, {
+        name: 'AES-CBC',
+        length: 128
+      }, false, [ 'decrypt' ])
+
+      const ivBuffer = new Uint8Array(playlistKeyData.iv.substring(2).match(/[\da-f]{2}/gi).map(function (h) {
+        return parseInt(h, 16)
+      }));
+
+      const decrypted = await videoDecryptor(buffer, cryptoKey, ivBuffer.buffer);
+      filesData.push(decrypted);
+    }
+
+    console.log('processed!')
+
+    const videoBlob = await new Blob(filesData);
+    const videoFilename = `${ tab.title }.ts`;
+
+    await chrome.downloads.download({
+      url: URL.createObjectURL(videoBlob),
+      filename: videoFilename
+    });
+
 
     processedMasterPlaylists.add(masterPlayList);
     await sem.release();
