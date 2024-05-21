@@ -15,6 +15,10 @@ const stateBadgeTexts = {
   [states.LISTEN]: 'ON'
 }
 
+const masterPlayListPerTab = new Map();
+const obtainedPlaylistsPerTab = new Map();
+const processedMasterPlaylistsPerTab = new Map();
+
 const setState = async (tabId, tabState) => {
   state[tabId] = tabState;
   await chrome.storage.local.set(state);
@@ -40,6 +44,9 @@ const getBlobUrl = async (blob) => {
 }
 
 chrome.webNavigation.onCommitted.addListener(async (info) => {
+  obtainedPlaylistsPerTab.set(info.tabId, new Set());
+  processedMasterPlaylistsPerTab.set(info.tabId, new Set());
+
   state = await chrome.storage.local.get();
   if (!state[info.tabId]) {
     await setState(info.tabId, states.STOPPED);
@@ -55,20 +62,18 @@ chrome.webNavigation.onCommitted.addListener(async (info) => {
   });
 });
 
-let processedMasterPlaylists = new Set();
-let masterPlayList = {
-  url: null,
-  data: null
-};
-let obtainedPlaylists = new Set();
 
-const triggerPlaylistObtainProcess = async (tabId, processUrl, masterPlayListLocalUrl, masterPlayListLocalData) => {
-  const website = new URL(processUrl).origin;
-  if (state[website] === states.STOPPED) {
+// todo clean obtained playlists
+
+const triggerPlaylistObtainProcess = async (tabId, processUrl) => {
+  const processedMasterPlaylists = processedMasterPlaylistsPerTab.get(tabId);
+  const masterPlaylist = masterPlayListPerTab.get(tabId);
+
+  if (state[tabId] === states.STOPPED || processedMasterPlaylists.has(masterPlaylist.url) || !masterPlaylist || !masterPlaylist.url) {
     return;
   }
 
-  const masterPlayListMetaData = m3u8Parser(masterPlayListLocalData, masterPlayListLocalUrl);
+  const masterPlayListMetaData = m3u8Parser(masterPlaylist.data, masterPlaylist.url);
   const maxLevel = masterPlayListMetaData.levels.sort((a, b) => b.bandwidth - a.bandwidth)[0];
   const responsePlaylist = await fetch(maxLevel.url);
   const playListWithMaxResolutionData = await responsePlaylist.text();
@@ -100,7 +105,7 @@ const triggerPlaylistObtainProcess = async (tabId, processUrl, masterPlayListLoc
 
     await chrome.action.setBadgeText({
       tabId: tab.id,
-      text: `${Math.round(segment.sn / playlist.segments.length * 100)}%`
+      text: `${ Math.round(segment.sn / playlist.segments.length * 100) }%`
     });
 
 
@@ -128,7 +133,7 @@ const triggerPlaylistObtainProcess = async (tabId, processUrl, masterPlayListLoc
   const videoBlobUrl = await getBlobUrl(videoBlob);
   chrome.downloads.download({url: videoBlobUrl, filename: videoFilename});
 
-  processedMasterPlaylists.add(masterPlayList);
+  processedMasterPlaylists.add(masterPlaylist.url);
   await chrome.action.setBadgeText({
     tabId: tab.id,
     text: stateBadgeTexts[states.LISTEN]
@@ -138,21 +143,33 @@ const triggerPlaylistObtainProcess = async (tabId, processUrl, masterPlayListLoc
 const requestListener = async (resp) => {
   await semRequest.acquire();
 
-  if (resp.url.includes('/process/')) {
-    await triggerPlaylistObtainProcess(resp.tabId, resp.url, masterPlayList.url, masterPlayList.data);
-  }
-
-  const ext = resp.url.split('?')[0].split('#')[0].split('.').pop();
-  if (ext === 'm3u8' && !obtainedPlaylists.has(resp.url)) {
-    const data = await fetch(resp.url);
-    const playlistData = await data.text();
-    obtainedPlaylists.add(resp.url);
-    if (playlistData.includes('EXT-X-STREAM-INF')) {
-      masterPlayList = {
-        url: resp.url,
-        data: playlistData
-      };
+  try {
+    if (resp.url.includes('/process/') && masterPlayListPerTab.has(resp.tabId)) {
+      await triggerPlaylistObtainProcess(resp.tabId, resp.url);
     }
+
+    const ext = resp.url.split('?')[0].split('#')[0].split('.').pop();
+
+    const obtainedPlaylists = obtainedPlaylistsPerTab.get(resp.tabId);
+
+    if (ext === 'm3u8' && obtainedPlaylists && !obtainedPlaylists.has(resp.url)) {
+      const data = await fetch(resp.url);
+      const playlistData = await data.text();
+      obtainedPlaylists.add(resp.url);
+      if (playlistData.includes('EXT-X-STREAM-INF')) {
+        masterPlayListPerTab.set(resp.tabId, {
+          url: resp.url,
+          data: playlistData
+        });
+      }
+    }
+
+  } catch (e) {
+    console.log(e);
+    await chrome.action.setBadgeText({
+      tabId: resp.tabId,
+      text: stateBadgeTexts[state[resp.tabId]]
+    });
   }
 
   await semRequest.release();
