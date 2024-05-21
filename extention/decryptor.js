@@ -1,4 +1,4 @@
-const decrypt = (source_text, key) => {
+const decryptXor = (source_text, key) => {
   let result = '';
   while (key.length < source_text.length) {
     key += key;
@@ -13,7 +13,7 @@ const decrypt = (source_text, key) => {
 }
 
 const computeIV = (extMediaReady, xorKey)=>{
-  const decrypted = decrypt(extMediaReady, xorKey)
+  const decrypted = decryptXor(extMediaReady, xorKey)
 
   let computedIV = '';
   for (let i = 20; i < 36; i++) {
@@ -22,7 +22,24 @@ const computeIV = (extMediaReady, xorKey)=>{
   return computedIV;
 }
 
+const decryptAes = async (ciphertext, key, iv) => {
+  const decrypted = await crypto.subtle.decrypt(
+    {
+      name: 'AES-CBC',
+      iv
+    },
+    key,
+    ciphertext
+  );
+
+  // return decrypted;
+  const extra = decrypted.length % 16;
+  return extra > 0 ? decrypted.slice(1, decrypted.length-extra) : decrypted.slice(1);
+}
 
 
-
-export default computeIV;
+export default {
+  decryptXor,
+  computeIV,
+  decryptAes
+};
