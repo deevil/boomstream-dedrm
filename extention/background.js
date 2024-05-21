@@ -67,12 +67,6 @@ const triggerPlaylistObtainProcess = async (tabId, processUrl, masterPlayListLoc
   if (state[website] === states.STOPPED) {
     return;
   }
-  /*
-    await chrome.action.setBadgeText({
-      tabId: tab.id,
-      text: 'DWN'
-    });
-  */
 
   const masterPlayListMetaData = m3u8Parser(masterPlayListLocalData, masterPlayListLocalUrl);
   const maxLevel = masterPlayListMetaData.levels.sort((a, b) => b.bandwidth - a.bandwidth)[0];
@@ -102,7 +96,14 @@ const triggerPlaylistObtainProcess = async (tabId, processUrl, masterPlayListLoc
   const filesData = [];
 
   for (const segment of playlist.segments) {
-    console.log(`processing segment ${ segment.sn }`);
+    console.log(`processing segment ${ segment.sn } [${ Math.round(segment.sn / playlist.segments.length * 100) }]`);
+
+    await chrome.action.setBadgeText({
+      tabId: tab.id,
+      text: `${Math.round(segment.sn / playlist.segments.length * 100)}%`
+    });
+
+
     const r = await fetch(segment.url);
     const buffer = await r.arrayBuffer();
     const enc = new TextEncoder();
@@ -130,7 +131,7 @@ const triggerPlaylistObtainProcess = async (tabId, processUrl, masterPlayListLoc
   processedMasterPlaylists.add(masterPlayList);
   await chrome.action.setBadgeText({
     tabId: tab.id,
-    text: 'ON'
+    text: stateBadgeTexts[states.LISTEN]
   });
 }
 
