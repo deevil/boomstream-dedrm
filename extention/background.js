@@ -8,20 +8,44 @@ let state = null;
 
 const states = {
   STOPPED: 0,
-  LISTEN: 1
+  LISTEN: 1,
+  ERR: 2
 };
 const stateBadgeTexts = {
   [states.STOPPED]: 'OFF',
-  [states.LISTEN]: 'ON'
+  [states.LISTEN]: 'ON',
+  [states.ERR]: 'ERR'
 }
 
 const masterPlayListPerTab = new Map();
-const obtainedPlaylistsPerTab = new Map();
 const processedMasterPlaylistsPerTab = new Map();
+const processedMasterPlaylistVideoPerTab = new Map();
 
 const setState = async (tabId, tabState) => {
   state[tabId] = tabState;
-  await chrome.storage.local.set(state);
+  await chrome.storage.session.set(state);
+}
+
+const safeRequest = async (url, triesLeft = 3)=>{
+  if(triesLeft === 0){
+    chrome.notifications.create('video-download-failed',
+      {
+        type: "basic",
+        iconUrl: "images/icon-128.png",
+        title: "Video download failed",
+        message: "Video download failed, try to reload page",
+      });
+    throw new Error();
+  }
+
+  const resp = await fetch(url);
+  if(resp.status > 401){
+    console.log(`failed request with status ${resp.status}, retrying`);
+    await new Promise(res=> setTimeout(res, Math.random() * 1000));
+    return safeRequest(url, triesLeft - 1);
+  }
+
+  return resp;
 }
 
 const getBlobUrl = async (blob) => {
@@ -44,8 +68,8 @@ const getBlobUrl = async (blob) => {
 }
 
 chrome.webNavigation.onCommitted.addListener(async (info) => {
-  obtainedPlaylistsPerTab.set(info.tabId, new Set());
   processedMasterPlaylistsPerTab.set(info.tabId, new Set());
+  processedMasterPlaylistVideoPerTab.set(info.tabId, new Set());
 
   state = await chrome.storage.local.get();
   if (!state[info.tabId]) {
@@ -62,20 +86,18 @@ chrome.webNavigation.onCommitted.addListener(async (info) => {
   });
 });
 
-
-// todo clean obtained playlists
-
 const triggerPlaylistObtainProcess = async (tabId, processUrl) => {
   const processedMasterPlaylists = processedMasterPlaylistsPerTab.get(tabId);
+  const processedMasterPlaylistVideo = processedMasterPlaylistVideoPerTab.get(tabId);
   const masterPlaylist = masterPlayListPerTab.get(tabId);
 
-  if (state[tabId] === states.STOPPED || processedMasterPlaylists.has(masterPlaylist.url) || !masterPlaylist || !masterPlaylist.url) {
+  if (state[tabId] === states.STOPPED || processedMasterPlaylistVideo.has(masterPlaylist.url) || !masterPlaylist || !masterPlaylist.url) {
     return;
   }
 
   const masterPlayListMetaData = m3u8Parser(masterPlaylist.data, masterPlaylist.url);
   const maxLevel = masterPlayListMetaData.levels.sort((a, b) => b.bandwidth - a.bandwidth)[0];
-  const responsePlaylist = await fetch(maxLevel.url);
+  const responsePlaylist = await safeRequest(maxLevel.url);
   const playListWithMaxResolutionData = await responsePlaylist.text();
 
   let extMediaReady = playListWithMaxResolutionData.substring(playListWithMaxResolutionData.indexOf('#EXT-X-MEDIA-READY'));
@@ -87,16 +109,19 @@ const triggerPlaylistObtainProcess = async (tabId, processUrl) => {
   const tab = await chrome.tabs.get(tabId);
   const safeTitleName = tab.title.trim().replaceAll(/[\/:\*\?"<>\|]/g, '');
 
-  const playlistUrl = `data:application/vnd.apple.mpegurl;base64,${ btoa(processedPlayListData) }`;
-  const playlistFilename = `${ safeTitleName }.m3u8`;
-  chrome.downloads.download({
-    url: playlistUrl,
-    filename: playlistFilename
-  });
+  if(!processedMasterPlaylists.has(masterPlaylist.url)) {
+    const playlistUrl = `data:application/vnd.apple.mpegurl;base64,${ btoa(processedPlayListData) }`;
+    const playlistFilename = `${ safeTitleName }.m3u8`;
+    chrome.downloads.download({
+      url: playlistUrl,
+      filename: playlistFilename
+    });
+    processedMasterPlaylists.add(masterPlaylist.url);
+  }
 
   const playlist = m3u8Parser(processedPlayListData, maxLevel.url);
   const playlistKeyData = playlist.key[0];
-  const keyResponse = await fetch(playlistKeyData.uri);
+  const keyResponse = await safeRequest(playlistKeyData.uri);
   const key = await keyResponse.text();
   const filesData = [];
 
@@ -109,7 +134,7 @@ const triggerPlaylistObtainProcess = async (tabId, processUrl) => {
     });
 
 
-    const r = await fetch(segment.url);
+    const r = await safeRequest(segment.url);
     const buffer = await r.arrayBuffer();
     const enc = new TextEncoder();
     const cryptoKey = await crypto.subtle.importKey('raw', enc.encode(key).buffer, {
@@ -133,7 +158,7 @@ const triggerPlaylistObtainProcess = async (tabId, processUrl) => {
   const videoBlobUrl = await getBlobUrl(videoBlob);
   chrome.downloads.download({url: videoBlobUrl, filename: videoFilename});
 
-  processedMasterPlaylists.add(masterPlaylist.url);
+  processedMasterPlaylistVideo.add(masterPlaylist.url);
   await chrome.action.setBadgeText({
     tabId: tab.id,
     text: stateBadgeTexts[states.LISTEN]
@@ -143,6 +168,11 @@ const triggerPlaylistObtainProcess = async (tabId, processUrl) => {
 const requestListener = async (resp) => {
   await semRequest.acquire();
 
+  if (resp.tabId === -1) {
+    await semRequest.release();
+    return;
+  }
+
   try {
     if (resp.url.includes('/process/') && masterPlayListPerTab.has(resp.tabId)) {
       await triggerPlaylistObtainProcess(resp.tabId, resp.url);
@@ -150,12 +180,9 @@ const requestListener = async (resp) => {
 
     const ext = resp.url.split('?')[0].split('#')[0].split('.').pop();
 
-    const obtainedPlaylists = obtainedPlaylistsPerTab.get(resp.tabId);
-
-    if (ext === 'm3u8' && obtainedPlaylists && !obtainedPlaylists.has(resp.url)) {
-      const data = await fetch(resp.url);
+    if (ext === 'm3u8') {
+      const data = await safeRequest(resp.url);
       const playlistData = await data.text();
-      obtainedPlaylists.add(resp.url);
       if (playlistData.includes('EXT-X-STREAM-INF')) {
         masterPlayListPerTab.set(resp.tabId, {
           url: resp.url,
@@ -165,7 +192,8 @@ const requestListener = async (resp) => {
     }
 
   } catch (e) {
-    console.log(e);
+    console.log(e)
+    console.log(e.stack);
     await chrome.action.setBadgeText({
       tabId: resp.tabId,
       text: stateBadgeTexts[state[resp.tabId]]
