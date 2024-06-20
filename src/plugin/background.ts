@@ -13,17 +13,15 @@ const stateBadgeTexts = {
   [states.ERR]: 'ERR'
 }
 
-let pluginState: {
-  trackedWebsites: { [key: string]: number }
-} = null;
+let pluginState: { [key: string]: number } = null;
 
 const statePerTab: Map<string, {
   semaphore: Semaphore,
-  processedUrls: Set<string>
+  processedUrls: Set<string>,
+  isOnTrack: boolean
 }> = new Map();
 
-
-const setBadgeForWebsiteByTab = async(tab)=>{
+const setBadgeForWebsiteByTab = async (tab) => {
   const website = new URL(tab.url).origin;
   const tabsForTheWebsite = (await chrome.tabs.query({}))
     .filter(foundTab => {
@@ -34,67 +32,45 @@ const setBadgeForWebsiteByTab = async(tab)=>{
   for (const foundTab of tabsForTheWebsite) {
     await chrome.action.setBadgeText({
       tabId: foundTab.id,
-      text: stateBadgeTexts[pluginState.trackedWebsites[website] ? states.LISTEN: states.STOPPED]
+      text: stateBadgeTexts[pluginState[website] ? states.LISTEN : states.STOPPED]
     });
   }
 }
 
+const injectScriptIntoTab = async (tab)=>{
+  // todo check that script has already been injected or not
 
-chrome.webNavigation.onCommitted.addListener(async (info) => { //todo replace tabs to website and activate automatically on websites
-  pluginState = await chrome.storage.local.get();
-  if (!pluginState?.trackedWebsites) {
-    pluginState = {
-      trackedWebsites: {}
-    }
+
+  chrome.scripting.executeScript({
+    target: { tabId: tab.id, allFrames: false },
+    files: [
+      'inject.js'
+    ]
+  });
+}
+
+chrome.webNavigation.onCommitted.addListener(async (info) => {
+  pluginState = await chrome.storage.session.get();
+  if (!pluginState) {
+    pluginState = {}
     await chrome.storage.session.set(pluginState);
   }
 
-  const website = new URL(info.url)?.origin;
-
-  if (website && pluginState.trackedWebsites[website]) {
-  }
-
-  chrome.webRequest.onBeforeSendHeaders.addListener(passRequestToTab, { urls: ['<all_urls>'] }, ['requestHeaders', 'extraHeaders']);
+  const tab = await chrome.tabs.get(info.tabId);
+  const website = new URL(tab.url)?.origin;
 
   statePerTab.set(info.tabId, {
     semaphore: new Semaphore(1),
-    processedUrls: new Set()
+    processedUrls: new Set(),
+    isOnTrack: !!(website && pluginState[website])
   });
+
+  if(statePerTab.get(info.tabId).isOnTrack && info.frameId === 0){
+    await injectScriptIntoTab(tab);
+  }
 
   await setBadgeForWebsiteByTab(info);
 });
-
-
-const passRequestToTab = async (resp) => {
-  if (resp.tabId === -1) {
-    return;
-  }
-
-  // const semaphore = semaphorePerTab.get(resp.tabId); //todo
-
-  const ext = resp.url.split('?')[0].split('#')[0].split('.').pop();
-  if (!resp.url.includes('/process/') && ext !== 'm3u8') {
-    return;
-  }
-
-  /*  if (processedRequestsUrls.has(resp.url)) { // should be per each tab //todo
-      return;
-    }
-
-    //processedRequestsUrls.add(resp.url);*/
-
-  const headers = resp.requestHeaders.reduce((prev, current) => {
-    prev[current.name] = current.value;
-    return prev;
-  }, {});
-
-
-  const response = await chrome.tabs.sendMessage(resp.tabId, {
-    url: resp.url,
-    headers
-  });
-  // do something with response here, not outside the function
-}
 
 chrome.action.onClicked.addListener(async (tab) => {
   const website = new URL(tab.url).origin;
@@ -105,17 +81,11 @@ chrome.action.onClicked.addListener(async (tab) => {
     });
 
   if (!pluginState[website]) {
-    chrome.scripting.executeScript({
-      target: { tabId: tab.id, allFrames: false },
-      files: [
-        'inject.js'
-      ]
-    });
-
-    pluginState.trackedWebsites[website] = 1;
+    await injectScriptIntoTab(tab);
+    pluginState[website] = 1;
     await chrome.storage.session.set(pluginState);
   } else {
-    delete pluginState.trackedWebsites[website];
+    delete pluginState[website];
     await chrome.storage.session.set(pluginState);
 
     for (const foundTab of tabsForTheWebsite) {
@@ -126,3 +96,32 @@ chrome.action.onClicked.addListener(async (tab) => {
   await setBadgeForWebsiteByTab(tab);
 });
 
+chrome.webRequest.onBeforeSendHeaders.addListener(async (request) => {
+  if (request.tabId === -1 || !statePerTab.get(request.tabId)?.isOnTrack) {
+    return;
+  }
+
+  const tabState = statePerTab.get(request.tabId);
+  const ext = request.url.split('?')[0].split('#')[0].split('.').pop();
+  if ((!request.url.includes('/process/') && ext !== 'm3u8') || tabState.processedUrls.has(request.url)) {
+    return;
+  }
+
+  tabState.processedUrls.add(request.url);
+  await tabState.semaphore.acquire();
+
+
+  const headers = request.requestHeaders.reduce((prev, current) => {
+    prev[current.name] = current.value;
+    return prev;
+  }, {});
+
+
+  const response = await chrome.tabs.sendMessage(request.tabId, {
+    url: request.url,
+    headers
+  });
+
+  await tabState.semaphore.release();
+  // do something with response here, not outside the function
+}, { urls: ['<all_urls>'] }, ['requestHeaders', 'extraHeaders']);
