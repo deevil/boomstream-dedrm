@@ -29,7 +29,8 @@
     "downloads",
     "tabs",
     "offscreen",
-    "webNavigation"
+    "webNavigation",
+    "scripting"
   ],
   "host_permissions": [
     "http://*/*",
