@@ -37,36 +37,33 @@ const setBadgeForWebsiteByTab = async (tab) => {
   }
 }
 
-const injectScriptIntoTab = async (tab)=>{
-  // todo check that script has already been injected or not
-
-
+const injectScriptIntoTab = async (tabId) => {
   chrome.scripting.executeScript({
-    target: { tabId: tab.id, allFrames: false },
+    target: { tabId: tabId, allFrames: false },
     files: [
       'inject.js'
     ]
   });
 }
 
-chrome.webNavigation.onCommitted.addListener(async (info) => {
-  pluginState = await chrome.storage.session.get();
-  if (!pluginState) {
-    pluginState = {}
-    await chrome.storage.session.set(pluginState);
-  }
-
-  const tab = await chrome.tabs.get(info.tabId);
+const updateTabState = async (tabId)=>{
+  const tab = await chrome.tabs.get(tabId);
   const website = new URL(tab.url)?.origin;
 
-  statePerTab.set(info.tabId, {
+  statePerTab.set(tabId, {
     semaphore: new Semaphore(1),
     processedUrls: new Set(),
     isOnTrack: !!(website && pluginState[website])
   });
+}
 
-  if(statePerTab.get(info.tabId).isOnTrack && info.frameId === 0){
-    await injectScriptIntoTab(tab);
+chrome.webNavigation.onCommitted.addListener(async (info) => {
+  pluginState = await chrome.storage.session.get();
+
+  await updateTabState(info.tabId);
+
+  if (statePerTab.get(info.tabId).isOnTrack && info.frameId === 0) {
+    await injectScriptIntoTab(info.tabId);
   }
 
   await setBadgeForWebsiteByTab(info);
@@ -81,12 +78,14 @@ chrome.action.onClicked.addListener(async (tab) => {
     });
 
   if (!pluginState[website]) {
-    await injectScriptIntoTab(tab);
+    await injectScriptIntoTab(tab.id);
     pluginState[website] = 1;
-    await chrome.storage.session.set(pluginState);
+    await chrome.storage.session.set({[website]: 1});
+    await updateTabState(tab.id);
   } else {
     delete pluginState[website];
-    await chrome.storage.session.set(pluginState);
+    await chrome.storage.session.remove(website);
+    await updateTabState(tab.id);
 
     for (const foundTab of tabsForTheWebsite) {
       chrome.tabs.reload(foundTab.id);

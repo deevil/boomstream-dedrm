@@ -1,6 +1,7 @@
 import m3u8Parser from './vendor/m3u8Parser';
 import decryptor from './decryptor';
 import safeRequest from './safeRequest';
+import progressStatus from './progressStatus';
 
 const xorKey = 'bla_bla_bla';
 
@@ -24,7 +25,7 @@ function downloadBlob(blob, name) {
 }
 
 
-const triggerPlaylistObtainProcess = async (processUrl, headers, masterPlaylist) => {
+const triggerPlaylistObtainProcess = async (processUrl, headers, masterPlaylist, domProgressBarNode) => {
   const masterPlayListMetaData: any = m3u8Parser(masterPlaylist.data, masterPlaylist.url);
   const maxLevel = masterPlayListMetaData.levels.sort((a, b) => b.bandwidth - a.bandwidth)[0];
   const responsePlaylist = await safeRequest(maxLevel.url, headers);
@@ -47,7 +48,9 @@ const triggerPlaylistObtainProcess = async (processUrl, headers, masterPlaylist)
   const filesData = [];
 
   for (const segment of playlist.segments) {
-    console.log(`processing segment ${ segment.sn } [${ Math.round(segment.sn / playlist.segments.length * 100) }]`);
+    const progressProcessingText = progressStatus.processingSegment(segment.sn, playlist.segments.length);
+    console.log(progressProcessingText);
+    domProgressBarNode.textContent = progressProcessingText;
 
 /*    await chrome.action.setBadgeText({ //todo write smth about the progress on current tab
       tabId: tab.id,
@@ -71,7 +74,14 @@ const triggerPlaylistObtainProcess = async (processUrl, headers, masterPlaylist)
     filesData.push(decrypted);
   }
 
-  console.log('processed!')
+  const progressProcessedText = progressStatus.processed();
+  console.log(progressProcessedText);
+  domProgressBarNode.textContent = progressProcessedText;
+
+  setTimeout(()=>{
+    domProgressBarNode.textContent = progressStatus.awaiting();
+  }, 2000);
+
 
   const videoBlob = await new Blob(filesData, {type: 'application/octet-stream'});
   const videoFilename = `${ safeTitleName }.ts`;
