@@ -20,9 +20,12 @@ const createProgressBar = () => {
   const progressBarP = document.createElement('p');
   Object.assign(progressBarP.style, {
     position: 'absolute',
-    backgroundColor: 'orange',
+    backgroundColor: '#ffa500',
     width: '100%',
-    textAlign: 'center'
+    textAlign: 'center',
+    height: '50px',
+    color: '#000',
+    fontSize: '20px'
   });
   progressBarP.id = 'progressBarId';
   progressBarP.textContent = progressStatus.awaiting();

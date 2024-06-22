@@ -51,6 +51,12 @@ const triggerPlaylistObtainProcess = async (
   const key = await keyResponse.text();
   const filesData = [];
 
+  const enc = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey('raw', enc.encode(key).buffer, {
+    name: 'AES-CBC',
+    length: 128
+  }, false, ['decrypt']);
+
   for (const segment of playlist.segments) {
     const progressProcessingText = progressStatus.processingSegment(segment.sn, playlist.segments.length);
     console.log(progressProcessingText);
@@ -58,11 +64,6 @@ const triggerPlaylistObtainProcess = async (
 
     const r = await safeRequest(segment.url, headers);
     const buffer = await r.arrayBuffer();
-    const enc = new TextEncoder();
-    const cryptoKey = await crypto.subtle.importKey('raw', enc.encode(key).buffer, {
-      name: 'AES-CBC',
-      length: 128
-    }, false, ['decrypt']);
 
     const ivBuffer = new Uint8Array(playlistKeyData.iv.substring(2).match(/[\da-f]{2}/gi).map(function (h) {
       return parseInt(h, 16);
