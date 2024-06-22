@@ -1,6 +1,6 @@
 export class SafeRequestError extends Error {}
 
-const safeRequest = async (url, headers = {}, triesLeft = 10) => {
+const safeRequest = async (url: string, headers = {}, triesLeft = 10) => {
   if (triesLeft === 0) {
     throw new SafeRequestError();
   }
@@ -17,6 +17,6 @@ const safeRequest = async (url, headers = {}, triesLeft = 10) => {
   }
 
   return resp;
-}
+};
 
 export default safeRequest;

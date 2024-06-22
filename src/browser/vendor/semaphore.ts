@@ -12,6 +12,7 @@
  */
 export default class Semaphore {
   permits;
+
   promiseResolverQueue = [];
 
   /**
@@ -89,7 +90,7 @@ export default class Semaphore {
         this.promiseResolverQueue.splice(index, 1);
       } else {
         // This shouldn't happen, not much we can do at this point
-        console.warn(`Semaphore.waitFor couldn't find its promise resolver in the queue`);
+        console.warn('Semaphore.waitFor couldn\'t find its promise resolver in the queue');
       }
 
       // false because the wait was unsuccessful.
@@ -164,6 +165,7 @@ export default class Semaphore {
   async execute(func) {
     await this.wait();
     try {
+      // eslint-disable-next-line
       return await func();
     } finally {
       this.signal();

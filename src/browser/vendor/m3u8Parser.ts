@@ -1,11 +1,12 @@
 // Original file https://github.com/xiyuyizhi/mpd-m3u8-to-json/blob/master/src/m3u8Parser.ts
 
+// eslint-disable-next-line
 type AttrInfo = string | number | Array < string | number > | Object;
 
 type TagInfo = {
   [propName : string]: AttrInfo;
   url?: string
-}
+};
 
 type Segment = {
   start: number,
@@ -15,7 +16,7 @@ type Segment = {
   cc: number,
   sn: number,
   keyIndex?: number
-}
+};
 
 type LevelM3u8 = {
   master: boolean,
@@ -26,7 +27,7 @@ type LevelM3u8 = {
   endSN: number,
   live: boolean,
   key?: Array < any >
-}
+};
 
 type Level = {
   m3u8Url: string,
@@ -35,7 +36,7 @@ type Level = {
   codecs?: string,
   audio?: string,
   details?: LevelM3u8
-}
+};
 
 type MasterM3u8 = {
   master: boolean,
@@ -45,14 +46,14 @@ type MasterM3u8 = {
   map?: {
     url: string
   }
-}
+};
 
 type M3u8JSON = MasterM3u8 | LevelM3u8 | {
   error: 1,
   msg: string
 };
 
-type PostHooks = (x : TagInfo, y : M3u8JSON) => M3u8JSON
+type PostHooks = (x : TagInfo, y : M3u8JSON) => M3u8JSON;
 
 const PREFIX_TAG_PATTERN = /EXT(?:-X-)?([^:]+):?(.*)$/;
 const TAG_PAIR_SPLIT_PATTERN = /([^,="]+)((="[^"]+")|(=[^,]+))*/g;
@@ -71,54 +72,56 @@ function formatNameToCamel(str) {
         .toLowerCase();
 
       return all;
-    }, '')
+    }, '');
 }
 
 function parseTag(tagStr : string) : TagInfo {
-  if(!(/^#EXT/.test(tagStr) || !(/^\s*#/.test(tagStr)))) 
+  if (!(/^#EXT/.test(tagStr) || !(/^\s*#/.test(tagStr)))) 
     return null;
   
   let tagName;
   let attr;
-  let matched = PREFIX_TAG_PATTERN.exec(tagStr);
+  const matched = PREFIX_TAG_PATTERN.exec(tagStr);
 
   if (matched) {
     tagName = formatNameToCamel(matched[1]);
+    // eslint-disable-next-line @typescript-eslint/no-use-before-define
     attr = parseTagAttr(matched[2]);
   } else {
     tagName = 'url';
     attr = tagStr;
   }
 
-  return {[tagName]: attr}
+  return { [tagName]: attr };
 
 }
 
 function parseTagAttr(attrStr) : AttrInfo {
-  if(!attrStr) 
+  if (!attrStr) 
     return null;
   
-  let attrList = attrStr
+  const attrList = attrStr
     .match(TAG_PAIR_SPLIT_PATTERN)
-    .map(pairStr => parseTagAttrPairs(pairStr))
+    // eslint-disable-next-line @typescript-eslint/no-use-before-define
+    .map(pairStr => parseTagAttrPairs(pairStr));
 
-    // tag with only one attr
-    if (attrList.length === 1) 
-      return attrList[0]
+  // tag with only one attr
+  if (attrList.length === 1) 
+    return attrList[0];
 
-      // tag with multi not key=value attrs
-    if (attrList.filter(x => typeof x === 'object').length === 0) {
-      return attrList;
-    }
+  // tag with multi not key=value attrs
+  if (attrList.filter(x => typeof x === 'object').length === 0) {
+    return attrList;
+  }
 
-    // tag with attrs that  format like key=value
-    return attrList
+  // tag with attrs that  format like key=value
+  return attrList
     .reduce((all, c) => {
       return {
         ...all,
         ...c
-      }
-    }, {})
+      };
+    }, {});
 
 }
 
@@ -130,17 +133,17 @@ function parseTagAttrPairs(attrPairStr) : AttrInfo {
    * URI="data:text/plain;base64,AAAASnBzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAACoSEJ7zznHou8m2HbJCHvWfK10SEJ7zznHou8m2HbJCHvWfK11I88aJmwY="
    */
 
-  let attrPairs = attrPairStr
+  const attrPairs = attrPairStr
     .trim()
     .replace('=', '|')
     .split('|');
   if (attrPairs.length == 2) {
-    let key = formatNameToCamel(attrPairs[0])
+    const key = formatNameToCamel(attrPairs[0]);
     return {
       [key]: attrPairs[1].replace(/("|')/g, '')
-    }
+    };
   }
-  let v = parseFloat(attrPairs[0]);
+  const v = parseFloat(attrPairs[0]);
   return Number.isNaN(v)
     ? attrPairs[0]
     : v;
@@ -152,22 +155,22 @@ function geneAbsUrl(url, base) {
   }
 
   base = base
-    .split("/")
-    .slice(0, -1)
+    .split('/')
+    .slice(0, -1);
 
-  url = url.split("/");
+  url = url.split('/');
   while (url.length) {
-    let c = url.shift();
+    const c = url.shift();
     if (base.indexOf(c) == -1) {
-      base.push(c)
+      base.push(c);
     }
   }
-  return base.join("/");
+  return base.join('/');
 }
 
 function mergeTags(tagList, result, postHooks : PostHooks) {
-  let master = result.master;
-  let len = tagList.length;
+  const master = result.master;
+  const len = tagList.length;
   let cc = 0;
   let duration = 0;
   let startSN = 0;
@@ -176,17 +179,17 @@ function mergeTags(tagList, result, postHooks : PostHooks) {
   let keyIndex = -1;
 
   for (let i = 0; i < len; i++) {
-    let tagInfo = tagList[i];
+    const tagInfo = tagList[i];
 
-    for (let key in tagInfo) {
-      let v = tagInfo[key];
-      if (v && v['uri']) {
-        v['url'] = geneAbsUrl(v['uri'], result['m3u8Url']);
+    for (const key in tagInfo) {
+      const v = tagInfo[key];
+      if (v && v.uri) {
+        v.url = geneAbsUrl(v.uri, result.m3u8Url);
       }
       switch (key) {
-        case "inf":
+        case 'inf':
           // if contains human info?
-          let segment = {
+          const segment = {
             start: duration,
             end: duration + (Array.isArray(v)
               ? v[0]
@@ -195,53 +198,54 @@ function mergeTags(tagList, result, postHooks : PostHooks) {
             sn: startSN + segCount
           };
           if (keyIndex >= 0) {
-            segment['keyIndex'] = keyIndex;
+            // @ts-expect-error vendor's lib
+            segment.keyIndex = keyIndex;
           }
           segCount++;
-          duration = segment['end'];
-          result['segments'].push(segment);
+          duration = segment.end;
+          result.segments.push(segment);
           break;
-        case "start":
+        case 'start':
           duration = v;
           break;
-        case "discontinuity":
+        case 'discontinuity':
           cc++;
           break;
-        case "mediaSequence":
+        case 'mediaSequence':
           startSN = v;
           break;
-        case "streamInf":
+        case 'streamInf':
           levelCount++;
-          v['levelId'] = levelCount;
-          result['levels'].push(v);
+          v.levelId = levelCount;
+          result.levels.push(v);
           break;
-        case "media":
-          result['medias'].push(v);
+        case 'media':
+          result.medias.push(v);
           break;
-        case "endlist":
-          result['live'] = false;
+        case 'endlist':
+          result.live = false;
           break;
-        case "key":
+        case 'key':
           keyIndex++;
-          if (result['key']) {
-            result['key'].push(v);
+          if (result.key) {
+            result.key.push(v);
           } else {
-            result['key'] = [v];
+            result.key = [v];
           }
           break;
-        case "url":
-          let list = master
-            ? result['levels']
-            : result['segments'];
+        case 'url':
+          const list = master
+            ? result.levels
+            : result.segments;
 
           if (!list.length) {
             throw new Error('invalid m3u8');
           }
 
           if (master) {
-            list[levelCount - 1].url = geneAbsUrl(v, result['m3u8Url']);
+            list[levelCount - 1].url = geneAbsUrl(v, result.m3u8Url);
           } else {
-            list[segCount - 1].url = geneAbsUrl(v, result['m3u8Url'])
+            list[segCount - 1].url = geneAbsUrl(v, result.m3u8Url);
           }
           break;
         default:
@@ -251,14 +255,14 @@ function mergeTags(tagList, result, postHooks : PostHooks) {
       }
     }
     if (postHooks) {
-      result = postHooks(tagInfo, result)
+      result = postHooks(tagInfo, result);
     }
   }
 
   if (!master) {
-    result['startSN'] = startSN;
-    result['endSN'] = startSN + segCount - 1;
-    result['duration'] = duration;
+    result.startSN = startSN;
+    result.endSN = startSN + segCount - 1;
+    result.duration = duration;
   }
 
   return result;
@@ -266,22 +270,22 @@ function mergeTags(tagList, result, postHooks : PostHooks) {
 }
 
 function m3u8Parser(text : string, m3u8Url : string, postHooks?: PostHooks) : M3u8JSON {
-  if(!text || !m3u8Url) {
-    return {error: 1, msg: "invalid input"}
+  if (!text || !m3u8Url) {
+    return { error: 1, msg: 'invalid input' };
   }
 
   const tagList = text
-    .split("\n")
+    .split('\n')
     .filter(Boolean)
     .map((x) => parseTag(x.trim()))
     .filter(Boolean);
 
   if (!tagList.length) {
-    return {error: 1, msg: "invalid m3u8"}
+    return { error: 1, msg: 'invalid m3u8' };
   }
 
   const isMaster = tagList
-    .filter(x => !!x['streamInf'])
+    .filter(x => !!x.streamInf)
     .length !== 0;
 
   let result: M3u8JSON;
@@ -292,7 +296,7 @@ function m3u8Parser(text : string, m3u8Url : string, postHooks?: PostHooks) : M3
       m3u8Url,
       levels: [],
       medias: []
-    }
+    };
   } else {
     result = {
       master: false,
@@ -302,13 +306,13 @@ function m3u8Parser(text : string, m3u8Url : string, postHooks?: PostHooks) : M3
       endSN: 0,
       segments: [],
       live: true
-    }
+    };
   }
 
   try {
     result = mergeTags(tagList, result, postHooks);
   } catch (e) {
-    return {error: 1, msg: e.message}
+    return { error: 1, msg: e.message };
   }
   return result;
 }

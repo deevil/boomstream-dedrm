@@ -18,14 +18,19 @@ const createProgressBar = () => {
   }
 
   const progressBarP = document.createElement('p');
-  Object.assign(progressBarP.style, {position: 'absolute', backgroundColor: 'orange', width: '100%', textAlign: 'center'});
+  Object.assign(progressBarP.style, {
+    position: 'absolute',
+    backgroundColor: 'orange',
+    width: '100%',
+    textAlign: 'center'
+  });
   progressBarP.id = 'progressBarId';
   progressBarP.textContent = progressStatus.awaiting();
 
   document.body.appendChild(progressBarP);
   progressBarP.focus();
   return progressBarP;
-}
+};
 
 const domElement = createProgressBar();
 
@@ -50,19 +55,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     }
   }
 
-  await sem.release();
+  sem.release();
 
   sendResponse({}); // call after request processed
-
-
-  /*    console.log(sender.tab ?
-        "from a content script:" + sender.tab.url :
-        "from the extension");
-      if (request.greeting === "hello")
-        sendResponse({farewell: "goodbye"});*/
-
-
-  // todo trigger on web request
-
-
 });

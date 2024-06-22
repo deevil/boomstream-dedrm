@@ -5,9 +5,9 @@ import progressStatus from './progressStatus';
 
 const xorKey = 'bla_bla_bla';
 
-function downloadBlob(blob, name) {
+const downloadBlob = (blob: Blob, name: string) => {
   const blobUrl = URL.createObjectURL(blob);
-  const link = document.createElement("a");
+  const link = document.createElement('a');
 
   link.href = blobUrl;
   link.download = name;
@@ -22,10 +22,14 @@ function downloadBlob(blob, name) {
   );
 
   document.body.removeChild(link);
-}
+};
 
-
-const triggerPlaylistObtainProcess = async (processUrl, headers, masterPlaylist, domProgressBarNode) => {
+const triggerPlaylistObtainProcess = async (
+  processUrl: string,
+  headers: { [key: string]: string },
+  masterPlaylist: { data: string, url: string },
+  domProgressBarNode: Node
+) => {
   const masterPlayListMetaData: any = m3u8Parser(masterPlaylist.data, masterPlaylist.url);
   const maxLevel = masterPlayListMetaData.levels.sort((a, b) => b.bandwidth - a.bandwidth)[0];
   const responsePlaylist = await safeRequest(maxLevel.url, headers);
@@ -33,12 +37,12 @@ const triggerPlaylistObtainProcess = async (processUrl, headers, masterPlaylist,
 
   let extMediaReady = playListWithMaxResolutionData.substring(playListWithMaxResolutionData.indexOf('#EXT-X-MEDIA-READY'));
   extMediaReady = extMediaReady.substring(0, extMediaReady.indexOf('\n')).replace('#EXT-X-MEDIA-READY:', '').trim();
-  const IV = decryptor.computeIV(extMediaReady, xorKey)
-  const processedPlayListData = playListWithMaxResolutionData.replace('[KEY]', processUrl).replace('[IV]', `0x${ IV }`);
+  const IV = decryptor.computeIV(extMediaReady, xorKey);
+  const processedPlayListData = playListWithMaxResolutionData.replace('[KEY]', processUrl).replace('[IV]', `0x${IV}`);
 
   const safeTitleName = document.title.trim().replaceAll(/[\/:\*\?"<>\|]/g, '');
-  const playlistBlob = await new Blob([processedPlayListData], {type: 'application/vnd.apple.mpegurl'});
-  const playlistFilename = `${ safeTitleName }.m3u8`;
+  const playlistBlob = new Blob([processedPlayListData], { type: 'application/vnd.apple.mpegurl' });
+  const playlistFilename = `${safeTitleName}.m3u8`;
   downloadBlob(playlistBlob, playlistFilename);
 
   const playlist: any = m3u8Parser(processedPlayListData, maxLevel.url);
@@ -52,22 +56,16 @@ const triggerPlaylistObtainProcess = async (processUrl, headers, masterPlaylist,
     console.log(progressProcessingText);
     domProgressBarNode.textContent = progressProcessingText;
 
-/*    await chrome.action.setBadgeText({ //todo write smth about the progress on current tab
-      tabId: tab.id,
-      text: `${ Math.round(segment.sn / playlist.segments.length * 100) }%`
-    });*/
-
-
     const r = await safeRequest(segment.url, headers);
     const buffer = await r.arrayBuffer();
     const enc = new TextEncoder();
     const cryptoKey = await crypto.subtle.importKey('raw', enc.encode(key).buffer, {
       name: 'AES-CBC',
       length: 128
-    }, false, [ 'decrypt' ])
+    }, false, ['decrypt']);
 
     const ivBuffer = new Uint8Array(playlistKeyData.iv.substring(2).match(/[\da-f]{2}/gi).map(function (h) {
-      return parseInt(h, 16)
+      return parseInt(h, 16);
     }));
 
     const decrypted = await decryptor.decryptAes(buffer, cryptoKey, ivBuffer.buffer);
@@ -78,16 +76,16 @@ const triggerPlaylistObtainProcess = async (processUrl, headers, masterPlaylist,
   console.log(progressProcessedText);
   domProgressBarNode.textContent = progressProcessedText;
 
-  setTimeout(()=>{
+  setTimeout(() => {
     domProgressBarNode.textContent = progressStatus.awaiting();
   }, 2000);
 
 
-  const videoBlob = await new Blob(filesData, {type: 'application/octet-stream'});
-  const videoFilename = `${ safeTitleName }.ts`;
+  const videoBlob = new Blob(filesData, { type: 'application/octet-stream' });
+  const videoFilename = `${safeTitleName}.ts`;
 
   downloadBlob(videoBlob, videoFilename);
-}
+};
 
-export default triggerPlaylistObtainProcess
+export default triggerPlaylistObtainProcess;
 

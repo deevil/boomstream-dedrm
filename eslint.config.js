@@ -1,3 +1,13 @@
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
+/*
+import tsPlugin from '@typescript-eslint/eslint-plugin';
+import importPlugin from 'eslint-plugin-import';
+import tsEslint from 'typescript-eslint';
+const {rules: airbnbRules} = require('eslint-config-airbnb-typescript/lib/shared.js');
+*/
+
 const tsPlugin = require('@typescript-eslint/eslint-plugin');
 const importPlugin = require('eslint-plugin-import');
 const tsEslint = require('typescript-eslint');
@@ -6,14 +16,20 @@ const {rules: airbnbRules} = require('eslint-config-airbnb-typescript/lib/shared
 /**
  * @type {import('eslint').Linter.FlatConfig[]}
  */
-module.exports = [
+export default [
   // This is just an example for rules specific to JS files
   ...tsEslint.configs.recommendedTypeChecked.map((config) => ({
     ...config,
-    files: [ 'src/*.ts' ] // We use TS config only for TS files
+    files: [
+      'src/*.ts',
+      'src/**/*.ts'
+    ] // We use TS config only for TS files
   })),
   {
-    files: [ 'src/*.ts' ],
+    files: [
+      'src/*.ts',
+      'src/**/*.ts'
+    ],
     languageOptions: {
       parserOptions: {
         project: true,

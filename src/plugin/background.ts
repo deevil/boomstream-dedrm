@@ -11,7 +11,7 @@ const stateBadgeTexts = {
   [states.STOPPED]: 'OFF',
   [states.LISTEN]: 'ON',
   [states.ERR]: 'ERR'
-}
+};
 
 let pluginState: { [key: string]: number } = null;
 
@@ -35,7 +35,7 @@ const setBadgeForWebsiteByTab = async (tab) => {
       text: stateBadgeTexts[pluginState[website] ? states.LISTEN : states.STOPPED]
     });
   }
-}
+};
 
 const injectScriptIntoTab = async (tabId) => {
   chrome.scripting.executeScript({
@@ -44,7 +44,7 @@ const injectScriptIntoTab = async (tabId) => {
       'inject.js'
     ]
   });
-}
+};
 
 const updateTabState = async (tabId)=>{
   const tab = await chrome.tabs.get(tabId);
@@ -55,7 +55,7 @@ const updateTabState = async (tabId)=>{
     processedUrls: new Set(),
     isOnTrack: !!(website && pluginState[website])
   });
-}
+};
 
 chrome.webNavigation.onCommitted.addListener(async (info) => {
   pluginState = await chrome.storage.session.get();
@@ -80,7 +80,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   if (!pluginState[website]) {
     await injectScriptIntoTab(tab.id);
     pluginState[website] = 1;
-    await chrome.storage.session.set({[website]: 1});
+    await chrome.storage.session.set({ [website]: 1 });
     await updateTabState(tab.id);
   } else {
     delete pluginState[website];
@@ -116,11 +116,11 @@ chrome.webRequest.onBeforeSendHeaders.addListener(async (request) => {
   }, {});
 
 
-  const response = await chrome.tabs.sendMessage(request.tabId, {
+  await chrome.tabs.sendMessage(request.tabId, {
     url: request.url,
     headers
   });
 
-  await tabState.semaphore.release();
+  tabState.semaphore.release();
   // do something with response here, not outside the function
 }, { urls: ['<all_urls>'] }, ['requestHeaders', 'extraHeaders']);
