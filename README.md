@@ -3,9 +3,10 @@
 Boomstream video downloader. Works as plugin for chrome
 
 ## Installation
-
 1) Obtain chrome extension from [release page](https://github.com/ega-forever/boomstream-dedrm/releases)
-2) install extension to chrome 
+2) unzip archive
+3) go to chrome extensions page ``chrome://extensions/`` and activate ``Developer mode``
+4) next click ``load unpacked`` and choose a folder, where plugin was unpacked
 
 ## How does it work?
 1) Once installed, the plugin ``boomstream-dedrm`` will appear among other extensions
